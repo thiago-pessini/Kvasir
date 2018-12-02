@@ -1,0 +1,11 @@
+version: "2"
+services:
+  kvasir:
+    image: "thiagopessini/kvasir:1.0.0-alpha"
+    ports:
+      - "4000:4000"
+    environment:
+      - DB_HOST=host
+      - DB_USER=user
+      - DB_PASSWORD=pass
+      - SERVER_PORT=port

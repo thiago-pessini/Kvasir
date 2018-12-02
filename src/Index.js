@@ -19,6 +19,7 @@ console.log('Parameters were loaded successfully!');
  */
 App.use(BodyParser.json());
 App.post(`/api/v${API_VERSION}/test`, function (req, res) {
+    console.log("Request received!");
     saveEntities(req.body).then(() => {
         res.status(201).send();
     }).catch((error) => {
@@ -97,25 +98,16 @@ async function prepareDatabase() {
                 autoIncrement: true,
             },
             project: {
-                type: Sequelize.STRING,
-                allowNull: false,
-                validate: {
-                    len: [0, 20]
-                }
+                type: Sequelize.STRING(20),
+                allowNull: false
             },
             environment: {
-                type: Sequelize.STRING,
-                allowNull: false,
-                validate: {
-                    len: [0, 20]
-                }
+                type: Sequelize.STRING(20),
+                allowNull: false
             },
             description: {
-                type: Sequelize.STRING,
-                allowNull: false,
-                validate: {
-                    len: [0, 4000]
-                }
+                type: Sequelize.STRING(4000),
+                allowNull: false
             },
             executed_at: {
                 type: Sequelize.DATE,
@@ -130,11 +122,8 @@ async function prepareDatabase() {
                 autoIncrement: true,
             },
             description: {
-                type: Sequelize.STRING,
-                allowNull: false,
-                validate: {
-                    len: [0, 255]
-                }
+                type: Sequelize.STRING(255),
+                allowNull: false
             }
         });
         Step = sequelize.define('step', {
@@ -144,11 +133,8 @@ async function prepareDatabase() {
                 autoIncrement: true,
             },
             description: {
-                type: Sequelize.STRING,
-                allowNull: false,
-                validate: {
-                    len: [0, 255]
-                }
+                type: Sequelize.STRING(255),
+                allowNull: false
             },
             status: {
                 type: Sequelize.STRING,
@@ -161,11 +147,8 @@ async function prepareDatabase() {
                 allowNull: true
             },
             error_message: {
-                type: Sequelize.STRING,
-                allowNull: true,
-                validate: {
-                    len: [0, 4000]
-                }
+                type: Sequelize.STRING(4000),
+                allowNull: true
             }
         });
         //Define the relationships
