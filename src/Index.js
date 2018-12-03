@@ -3,7 +3,14 @@ const BodyParser = require('body-parser');
 const Sequelize = require('sequelize');
 
 const API_VERSION = 1;
+
 console.log('Loading parameters...');
+if (process.env.NODE_ENV !== 'production') {
+    const result = require('dotenv').config();
+    if (result.error) {
+        console.info("Error while loading environment variables: ", result);
+    }
+};
 const params = {
     db_dialect: process.env.DB_DIALECT || "postgres",
     db_host: process.env.DB_HOST || "localhost",
