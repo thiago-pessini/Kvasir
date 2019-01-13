@@ -1,6 +1,7 @@
 const App = require('express')();
 const BodyParser = require('body-parser');
 const Sequelize = require('sequelize');
+const Uuid = require('uuid/v4');
 
 const API_VERSION = 1;
 
@@ -25,17 +26,76 @@ console.log('Parameters were loaded successfully!');
  * Define API's behaviour
  */
 App.use(BodyParser.json());
-App.post(`/api/v${API_VERSION}/test`, function (req, res) {
-    console.log("Request received!");
-    saveEntities(req.body).then(() => {
-        res.status(201).send();
+App.post(`/api/v${API_VERSION}/kvasir/quality-gates`, function (req, res) {
+    console.info("Received request for Quality Gates");
+    updateQualityGates(req.body).then(() => {
+        res.status(200).send();
     }).catch((error) => {
+        /*  TODO: Improve this error handler
+        */
         res.status(422).send(error);
     });
 });
 
 /**
- * Logic to save entities
+ * Insert or update new metrics of a product
+ * @param {*} qualityGates 
+ */
+async function updateQualityGates(qualityGates) {
+    console.log(qualityGates);
+    let result = validateSchema(qualityGates);
+    if (result.isValid) {
+        //recover productId based on productName
+        let product = await Product.findOne({ where: { name: qualityGates.productName } });
+        if (product) {
+            //Find the measure if it was already saved
+            for (let i = 0; i < qualityGates.conditions.length; i++) {
+                let measure = await Measure.findOne({
+                    where: {
+                        metric: qualityGates.conditions[i].metric,
+                        productId: product.id
+                    }
+                });
+                //Use the same id or generate a new one
+                let id = measure ? measure.id : Uuid();
+                //Generate an object that will be save or update on database
+                let obj = {
+                    id: id,
+                    metric: qualityGates.conditions[i].metric,
+                    status: qualityGates.conditions[i].level,
+                    warningvalue: qualityGates.conditions[i].warning,
+                    errorvalue: qualityGates.conditions[i].error,
+                    actualvalue: qualityGates.conditions[i].actual,
+                    productId: product.id
+                };
+                //If measure already exists, update it. Otherwise, create it.
+                if(measure){
+                    await measure.update(obj);
+                }else{
+                    await Measure.create(obj);
+                }
+            }
+        } else {
+            //TODO: Deal with this properly.
+            throw new Exception("Product name not found!");
+        }
+    } else {
+        //TODO: Deal with this properly.
+        throw new Exception("Invalid JSON structure!");
+    }
+};
+
+/**
+ * Logic of validate is incomplete yet
+ * @param {*} body 
+ */
+function validateSchema(body) {
+    return { isValid: true };
+}
+
+/**
+ * Logic to save entities (E2E)
+ * TODO: Update the behavior to meet the new entity mapping
  */
 async function saveEntities(scenarios) {
     let transaction;
@@ -63,9 +123,13 @@ async function saveEntities(scenarios) {
 /**
  * Create database connection and synchronize models
  */
+let Product;
+let Project;
+let Measure;
 let Scenario;
 let Step;
 let Test;
+
 let sequelize;
 
 async function prepareDatabase() {
@@ -81,9 +145,7 @@ async function prepareDatabase() {
         },
         logging: false,
         define: {
-            underscored: true,
             timestamps: false,
-            paranoid: true,
             freezeTableName: true
         }
     });
@@ -97,36 +159,94 @@ async function prepareDatabase() {
     };
     //Define entities and relationships
     try {
-        //Define the entities
+        Product = sequelize.define('product', {
+            id: {
+                allowNull: false,
+                primaryKey: true,
+                type: Sequelize.UUID
+            },
+            name: {
+                type: Sequelize.STRING(40),
+                allowNull: false
+            }
+        });
+        Project = sequelize.define('project', {
+            id: {
+                allowNull: false,
+                primaryKey: true,
+                type: Sequelize.UUID
+            },
+            name: {
+                type: Sequelize.STRING(80),
+                allowNull: false
+            },
+            image: {
+                type: Sequelize.STRING(80),
+                allowNull: false
+            }
+        });
+        Project.belongsToMany(Product, { through: 'productproject' });
+
+        /**
+         * Quality Gates structure
+         */
+        Measure = sequelize.define('measure', {
+            id: {
+                allowNull: false,
+                primaryKey: true,
+                type: Sequelize.UUID
+            },
+            metric: {
+                type: Sequelize.STRING(80),
+                allowNull: false
+            },
+            status: {
+                type: Sequelize.STRING(10),
+                allowNull: false
+            },
+            warningvalue: {
+                type: Sequelize.FLOAT,
+                allowNull: true
+            },
+            errorvalue: {
+                type: Sequelize.FLOAT,
+                allowNull: true
+            },
+            actualvalue: {
+                type: Sequelize.FLOAT,
+                allowNull: true
+            }
+        });
+        Product.hasMany(Measure);
+        Measure.belongsTo(Product);
+
+        /**
+         * End To End structure
+         */
         Scenario = sequelize.define('scenario', {
             id: {
-                type: Sequelize.BIGINT,
-                primaryKey: true,
-                autoIncrement: true,
-            },
-            project: {
-                type: Sequelize.STRING(20),
-                allowNull: false
+                type: Sequelize.UUID,
+                primaryKey: true
             },
             environment: {
                 type: Sequelize.STRING(20),
-                allowNull: false
+                allowNull: false,
+                isIn: [['web', 'android', 'ios']],
             },
             description: {
                 type: Sequelize.STRING(4000),
                 allowNull: false
             },
-            executed_at: {
+            executedat: {
                 type: Sequelize.DATE,
                 allowNull: false,
                 defaultValue: Sequelize.NOW
             }
         });
-        Test = sequelize.define('test', {
+        Test = sequelize.define('testcase', {
             id: {
-                type: Sequelize.BIGINT,
-                primaryKey: true,
-                autoIncrement: true,
+                type: Sequelize.UUID,
+                primaryKey: true
             },
             description: {
                 type: Sequelize.STRING(255),
@@ -135,9 +255,8 @@ async function prepareDatabase() {
         });
         Step = sequelize.define('step', {
             id: {
-                type: Sequelize.BIGINT,
-                primaryKey: true,
-                autoIncrement: true,
+                type: Sequelize.UUID,
+                primaryKey: true
             },
             description: {
                 type: Sequelize.STRING(255),
@@ -153,16 +272,17 @@ async function prepareDatabase() {
                 type: Sequelize.BIGINT,
                 allowNull: true
             },
-            error_message: {
+            errormessage: {
                 type: Sequelize.STRING(4000),
                 allowNull: true
             }
         });
-        //Define the relationships
         Test.hasMany(Step);
         Step.belongsTo(Test);
         Scenario.hasMany(Test);
         Test.belongsTo(Scenario);
+        Project.hasMany(Scenario);
+        Scenario.belongsTo(Project);
     } catch (error) {
         console.error('Error during model definition: ');
         sequelize.close();
