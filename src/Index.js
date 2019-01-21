@@ -1,3 +1,5 @@
+/*jslint es6 */
+"use strict";
 const App = require('express')();
 const BodyParser = require('body-parser');
 const Sequelize = require('sequelize');
@@ -7,14 +9,15 @@ const API_VERSION = 1;
 
 console.log('Loading parameters...');
 if (process.env.NODE_ENV !== 'production') {
-    const result = require('dotenv').config();
-    if (result.error) {
-        console.info("Error while loading environment variables: ", result);
+    const env = require('dotenv').config();
+    if (env.error) {
+        console.info("Error while loading environment variables: ", env);
     }
-};
+}
 const params = {
     db_dialect: process.env.DB_DIALECT || "postgres",
     db_host: process.env.DB_HOST || "localhost",
+    db_port: process.env.DB_PORT || "5432",
     db_name: process.env.DB_NAME || "gjallarhorn",
     db_password: process.env.DB_PASSWORD || "postgres",
     db_user: process.env.DB_USER || "postgres",
@@ -26,34 +29,32 @@ console.log('Parameters were loaded successfully!');
  * Define API's behaviour
  */
 App.use(BodyParser.json());
-App.post(`/api/v${API_VERSION}/kvasir/quality-gates`, function (req, res) {
-    console.info("Received request for Quality Gates");
-    updateQualityGates(req.body).then(() => {
+App.post(`/api/v${API_VERSION}/kvasir/sonarqube`, function(req, res) {
+    console.info("Received request for SonarQube metrics of %s project", req.body.projectName);
+    updateQualityGates(req.body).then(function() {
         res.status(200).send();
-    }).catch((error) => {
-        /*  TODO: Improve this error handler
-        */
+    }).catch(function(error) {
+        //TODO: Improve this error handler
         res.status(422).send(error);
     });
 });
 
 /**
- * Insert or update new metrics of a product
- * @param {*} qualityGates 
+ * Insert or update new metrics of a project
+ * @param {*} qualityGates
  */
 async function updateQualityGates(qualityGates) {
-    console.log(qualityGates);
     let result = validateSchema(qualityGates);
     if (result.isValid) {
-        //recover productId based on productName
-        let product = await Product.findOne({ where: { name: qualityGates.productName } });
-        if (product) {
+        //recover projectId based on projectName
+        let project = await Project.findOne({ where: { name: qualityGates.projectName } });
+        if (project) {
             //Find the measure if it was already saved
             for (let i = 0; i < qualityGates.conditions.length; i++) {
                 let measure = await Measure.findOne({
                     where: {
                         metric: qualityGates.conditions[i].metric,
-                        productId: product.id
+                        projectId: project.id
                     }
                 });
                 //Use the same id or generate a new one
@@ -66,18 +67,18 @@ async function updateQualityGates(qualityGates) {
                     warningvalue: qualityGates.conditions[i].warning,
                     errorvalue: qualityGates.conditions[i].error,
                     actualvalue: qualityGates.conditions[i].actual,
-                    productId: product.id
+                    projectId: project.id
                 };
                 //If measure already exists, update it. Otherwise, create it.
-                if(measure){
+                if (measure) {
                     await measure.update(obj);
-                }else{
+                } else {
                     await Measure.create(obj);
                 }
             }
         } else {
             //TODO: Deal with this properly.
-            throw new Exception("Product name not found!");
+            throw new Exception("Project name not found!");
         }
     } else {
         //TODO: Deal with this properly.
@@ -87,7 +88,7 @@ async function updateQualityGates(qualityGates) {
 
 /**
  * Logic of validate is incomplete yet
- * @param {*} body 
+ * @param {*} body
  */
 function validateSchema(body) {
     return { isValid: true };
@@ -136,6 +137,7 @@ async function prepareDatabase() {
     //Try to connect to the database
     sequelize = new Sequelize(params.db_name, params.db_user, params.db_password, {
         host: params.db_host,
+        port: params.db_port,
         dialect: params.db_dialect,
         pool: {
             max: 5,
@@ -145,7 +147,7 @@ async function prepareDatabase() {
         },
         logging: false,
         define: {
-            timestamps: false,
+            timestamps: true,
             freezeTableName: true
         }
     });
@@ -217,8 +219,8 @@ async function prepareDatabase() {
                 allowNull: true
             }
         });
-        Product.hasMany(Measure);
-        Measure.belongsTo(Product);
+        Project.hasMany(Measure);
+        Measure.belongsTo(Project);
 
         /**
          * End To End structure
@@ -231,7 +233,9 @@ async function prepareDatabase() {
             environment: {
                 type: Sequelize.STRING(20),
                 allowNull: false,
-                isIn: [['web', 'android', 'ios']],
+                isIn: [
+                    ['web', 'android', 'ios']
+                ],
             },
             description: {
                 type: Sequelize.STRING(4000),
@@ -265,7 +269,9 @@ async function prepareDatabase() {
             status: {
                 type: Sequelize.STRING,
                 validate: {
-                    isIn: [['passed', 'failed', 'skipped']],
+                    isIn: [
+                        ['passed', 'failed', 'skipped']
+                    ],
                 }
             },
             duration: {
@@ -302,8 +308,8 @@ async function prepareDatabase() {
 };
 prepareDatabase().then(() => {
     /**
-    * Start the server
-    */
+     * Start the server
+     */
     console.log('Starting server...');
     try {
         App.listen(params.server_port);
