@@ -31,8 +31,8 @@ console.log('Parameters were loaded successfully!');
 App.use(BodyParser.json());
 App.post(`/api/v${API_VERSION}/kvasir/sonarqube`, function(req, res) {
     console.info("Received request for SonarQube metrics of %s project", req.body.projectName);
-    updateQualityGates(req.body).then(function() {
-        res.status(200).send();
+    updateQualityGates(req.body).then(function(statusCode) {
+        res.status(statusCode).send();
     }).catch(function(error) {
         //TODO: Improve this error handler
         res.status(422).send(error);
@@ -72,8 +72,12 @@ async function updateQualityGates(qualityGates) {
                 //If measure already exists, update it. Otherwise, create it.
                 if (measure) {
                     await measure.update(obj);
+                    console.info("Updated metric %s of project %s", obj.metric, qualityGates.projectName);
+                    return 200;
                 } else {
                     await Measure.create(obj);
+                    console.info("Created metric %s for project %s", obj.metric, qualityGates.projectName);
+                    return 201;
                 }
             }
         } else {
